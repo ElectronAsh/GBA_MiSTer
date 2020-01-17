@@ -482,8 +482,88 @@ gba
 	.pixel_out_we(pixel_we),          // new pixel for framebuffer 
 
 	.sound_out_left(AUDIO_L),
-	.sound_out_right(AUDIO_R)
+	.sound_out_right(AUDIO_R),
+	
+	.cart_gpio_cs( cart_gpio_cs ),		// output 
+	.cart_gpio_rnw( cart_gpio_rnw ),		// output
+	.cart_gpio_ena( cart_gpio_ena ),		// output
+	.cart_gpio_addr( cart_gpio_addr ),	// output [1:0]
+	
+	.cart_gpio_din( cart_gpio_din ),		// input [3:0]
+	.cart_gpio_dout( cart_gpio_dout )	// output [3:0]
 );
+
+(*keep*) wire cart_gpio_cs;
+(*keep*) wire cart_gpio_rnw;
+(*keep*) wire cart_gpio_ena;
+(*keep*) wire [1:0] cart_gpio_addr;
+(*keep*) wire [3:0] cart_gpio_din;
+(*keep*) wire [3:0] cart_gpio_dout;
+
+(*noprune*) reg [3:0] cart_gpio_data;
+(*noprune*) reg [3:0] cart_gpio_dir;
+(*noprune*) reg [3:0] cart_gpio_cont;
+
+assign cart_gpio_din = {cart_gpio_data[3:2], rtc_dout, cart_gpio_data[0]};
+
+
+// 80000C4h - I/O Port Data (selectable W or R/W)
+//   bit0-3  Data Bits 0..3 (0=Low, 1=High)
+//   bit4-15 not used (0)
+// 
+// 80000C6h - I/O Port Direction (for above Data Port) (selectable W or R/W)
+//   bit0-3  Direction for Data Port Bits 0..3 (0=In, 1=Out)
+//   bit4-15 not used (0)
+// 
+// 80000C8h - I/O Port Control (selectable W or R/W)
+//   bit0    Register 80000C4h..80000C8h Control (0=Write-Only, 1=Read/Write)
+//   bit1-15 not used (0)
+// In write-only mode, reads return 00h (or possible other data, if the rom contains non-zero data at that location).
+
+always @(posedge clk_sys or posedge reset)
+if (reset) begin
+	cart_gpio_data <= 4'h0;
+	cart_gpio_dir  <= 4'h0;
+	cart_gpio_cont  <= 4'h0;
+end
+else begin
+	if (cart_gpio_cs & cart_gpio_ena & !cart_gpio_rnw) begin
+		case (cart_gpio_addr)
+			0: cart_gpio_data <= cart_gpio_dout;
+			1: cart_gpio_dir  <= cart_gpio_dout;
+			2: cart_gpio_cont <= cart_gpio_dout;
+		default:;
+		endcase		
+	end
+end 
+
+//Connection Examples
+//  GPIO       | Boktai  | Wario
+//  Bit Pin    | RTC SOL | GYR RBL
+//  -----------+---------+---------
+//  0   ROM.1  | SCK CLK | RES -
+//  1   ROM.2  | SIO RST | CLK -
+//  2   ROM.21 | CS  -   | DTA -
+//  3   ROM.22 | -   FLG | -   MOT
+//  -----------+---------+---------
+//  IRQ ROM.43 | IRQ -   | -   -
+ 
+(*keep*) wire rtc_sck = cart_gpio_data[0];
+(*keep*) wire rtc_din = cart_gpio_data[1];
+(*keep*) wire rtc_cs  = cart_gpio_data[2];
+(*keep*) wire rtc_dout;
+
+s3511_rtc s3511_rtc_inst
+(
+	.clock( clk_sys ) ,	// input  clock
+	.reset_n( ~reset ) ,	// input  reset_n
+	.cs( rtc_cs ) ,		// input  cs
+	.sck( rtc_sck ) ,		// input  sck
+	.din( rtc_din ) ,		// input  din
+	.dout( rtc_dout )		// output dout
+);
+
+
 
 ////////////////////////////  QUIRKS  //////////////////////////////////
 

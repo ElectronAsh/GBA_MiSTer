@@ -8,13 +8,13 @@ use work.pReg_savestates.all;
 entity gba_top is
    generic
    (
-      Softmap_GBA_Gamerom_ADDR : integer; -- count: 8388608  -- 32 Mbyte Data for GameRom
-      Softmap_GBA_WRam_ADDR    : integer; -- count:   65536  -- 256 Kbyte Data for GBA WRam Large
-      Softmap_GBA_FLASH_ADDR   : integer; -- count:  131072  -- 128/512 Kbyte Data for GBA Flash
-      Softmap_GBA_EEPROM_ADDR  : integer; -- count:    8192  -- 8/32 Kbyte Data for GBA EEProm
-      Softmap_SaveState_ADDR   : integer; -- count:  524288  -- 512 Kbyte Data for Savestate 
+      Softmap_GBA_Gamerom_ADDR : integer := 0; -- count: 8388608  -- 32 Mbyte Data for GameRom
+      Softmap_GBA_WRam_ADDR    : integer := 0; -- count:   65536  -- 256 Kbyte Data for GBA WRam Large
+      Softmap_GBA_FLASH_ADDR   : integer := 0; -- count:  131072  -- 128/512 Kbyte Data for GBA Flash
+      Softmap_GBA_EEPROM_ADDR  : integer := 0; -- count:    8192  -- 8/32 Kbyte Data for GBA EEProm
+      Softmap_SaveState_ADDR   : integer := 0; -- count:  524288  -- 512 Kbyte Data for Savestate 
       is_simu                  : std_logic := '0';
-      turbosound               : std_logic  -- sound buffer to play sound in turbo mode without sound pitched up
+      turbosound               : std_logic := '0'  -- sound buffer to play sound in turbo mode without sound pitched up
    );
    port 
    (
@@ -103,7 +103,14 @@ entity gba_top is
       debug_cpu_mixed    : out   std_logic_vector(31 downto 0);
       debug_irq          : out   std_logic_vector(31 downto 0);
       debug_dma          : out   std_logic_vector(31 downto 0);
-      debug_mem          : out   std_logic_vector(31 downto 0)  
+      debug_mem          : out   std_logic_vector(31 downto 0);
+		-- cart gpio "port"
+		cart_gpio_cs		 : out	std_logic;
+		cart_gpio_rnw		 : out	std_logic;
+		cart_gpio_ena		 : out	std_logic;
+		cart_gpio_addr		 : out	std_logic_vector(1 downto 0);
+		cart_gpio_din		 : in		std_logic_vector(3 downto 0);
+		cart_gpio_dout		 : out	std_logic_vector(3 downto 0)
    );
 end entity;
 
@@ -325,6 +332,11 @@ begin
       cpu_done   => cpu_done  
    );
    
+	cart_gpio_rnw  <= cpu_bus_rnw;
+	cart_gpio_ena	<= cpu_bus_ena;
+	cart_gpio_addr <= cpu_bus_Adr(2 downto 1);
+	cart_gpio_dout <= cpu_bus_dout(3 downto 0);
+	
    mem_bus_Adr  <=  x"0" & debug_bus_Adr  when debug_bus_active = '1' else cpu_bus_Adr  when cpu_bus_ena = '1' else x"0" & dma_bus_Adr;
    mem_bus_rnw  <=  debug_bus_rnw         when debug_bus_active = '1' else cpu_bus_rnw  when cpu_bus_ena = '1' else dma_bus_rnw;
    mem_bus_ena  <=  debug_bus_ena         when debug_bus_active = '1' else cpu_bus_ena  when cpu_bus_ena = '1' else dma_bus_ena; 
@@ -336,6 +348,10 @@ begin
    begin
       if rising_edge(clk100) then
    
+			if (cpu_bus_Adr >= x"080000C4" and cpu_bus_Adr <= x"080000C9") then cart_gpio_cs <= '1';
+			else cart_gpio_cs <= '0';
+			end if;
+	
          debug_bus_ena    <= '0';
          if (GBA_Bus_written = '1') then
             debug_bus_active <= '1';
